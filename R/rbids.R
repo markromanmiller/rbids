@@ -1,74 +1,109 @@
-BidsData <- R6::R6Class("BIDS Data", list(
+# Initialize
 
-  #--- Initialize data
-  root = NULL,
-  all_files = NULL,
-  write_perm = FALSE,
-  initialize = function(root) {
-    # TODO: length 1 and character type
-    self$root <- root
-    self$all_files <- list.files(path = root, recursive = TRUE)
-  },
+bids <- function(root, readonly = T) {
+  bids_dataset <- list(
+    root = root,
+    all_files = list.files(path = root, recursive = TRUE),
+    readonly = readonly
+  )
+  class(bids_dataset) <- "bids_dataset"
+  bids_dataset
+}
 
-  #--- Query BIDS state and available functions
-  print = function(...) {
-    cat("Bids data rooted at \"")
-    cat(self$root)
-    cat("\"")
-    invisible(self)
-  },
-  subject_data_types = function() {
-    files_and_suffixes <- self$match_path(
-      paste0(
-        "^sub-(?<participant_id>[[:alnum:]]+)[\\\\\\/]sub-\\g1_(?<data_type_suffix>[[:alnum:]]+).tsv$"
-      ),
-      full.names = T
-    )
-    sort(unique(files_and_suffixes$data_type_suffix))
-  },
+# Regex helpers
 
-  #--- Workhorse search functions
-  match_path = function(pattern, full.names) {
-    regexpr_result <- regexpr(pattern, self$all_files, perl = T)
+subject_capture <- "sub-(?<participant_id>[[:alnum:]]+)"
+path_sep <- "[\\\\\\/]"
+subject_backref <- "sub-(?P=participant_id)"
 
-    matching_rows <- regexpr_result == 1
-    starts <- attr(regexpr_result, "capture.start")[matching_rows, , drop = F]
+# Printing and querying data
 
-    file_path <- self$all_files[matching_rows]
-    if (full.names) {
-      file_path <- file.path(self$root, file_path)
-    }
+print.bids_dataset <- function(bd) {
+  cat("Bids data rooted at \"")
+  cat(bd$root)
+  cat("\"")
+  invisible(bd)
+}
 
-    df <- data.frame(file_path = file_path)
-    for (colname in colnames(starts)) {
-      df[colname] <- substr(self$all_files[matching_rows], starts[,colname], starts[,colname] + attr(regexpr_result, "capture.length")[matching_rows,colname] - 1)
-    }
+bids_subject_data_types = function(bd) {
+  files_and_suffixes <- bids_match_path(
+    bd,
+    paste0(
+      "^",
+      subject_regex,
+      path_sep,
+      subject_backref,
+      "_",
+      "(?<data_type_suffix>[[:alnum:]]+)",
+      ".tsv$"
+    ),
+    full.names = T # this isn't used, just provided for function signature.
+  )
+  sort(unique(files_and_suffixes$data_type_suffix))
+}
 
-    df
-  },
+all_files <- function(bd, full.names) {
+  files <- bd$all_files
+  if (full.names) {
+    files <- file.path(bd$root, files)
+  }
+  files
+}
 
-  #--- Specific data type helpers
-  motion = function(full.names = T) {
-    self$match_path(paste0(
-      "^sub-(?<participant_id>[[:alnum:]]+)[\\\\\\/]ses-(?<session_id>[[:alnum:]]+)/",
+#--- Workhorse search functions
+bids_match_path <- function(bd, pattern, full.names) {
+  regexpr_result <- regexpr(pattern, bd$all_files, perl = T)
+
+  matching_rows <- regexpr_result == 1
+  starts <- attr(regexpr_result, "capture.start")[matching_rows, , drop = F]
+
+  df <- data.frame(file_path = all_files(bd, full.names)[matching_rows])
+  for (colname in colnames(starts)) {
+    lengths <- attr(regexpr_result, "capture.length")[matching_rows, colname]
+    ends <- starts[,colname] + lengths - 1
+    df[colname] <- substr(bd$all_files[matching_rows], starts[,colname], ends)
+  }
+
+  df
+}
+
+#--- Specific data type helpers
+bids_all_files <- function(bd, full.names = T) {
+  data.frame(file_path = all_files(bd, full.names))
+}
+
+bids_motion <- function(bd, full.names = T) {
+  bids_match_path(
+    bd,
+    paste0(
+      "^",
+      subject_capture,
+      path_sep,
+      "ses-(?<session_id>[[:alnum:]]+)/",
       "motion/",
-      "sub-\\g1_ses-\\g2_task-(?<task_label>[[:alnum:]]+)_motion.tsv$"
-    ), full.names = full.names)
-  },
-  subject_data = function(suffix, full.names = T) {
-    self$match_path(paste0(
+      subject_backref,
+      "_",
+      "ses-(?P=session_id)",
+      "_task-(?<task_label>[[:alnum:]]+)_motion.tsv$"
+    ),
+    full.names = full.names
+  )
+}
+
+bids_subject_data <- function(bd, suffix, full.names = T) {
+  bids_match_path(
+    bd,
+    paste0(
       "^sub-(?<participant_id>[[:alnum:]]+)[\\\\\\/]sub-\\g1_",
       suffix,
       ".tsv$"
-    ), full.names = full.names)
-  },
-  sessions = function(full.names = T) {
-    self$subject_data("sessions", full.names = full.names)
-  }
-))
+    ),
+    full.names = full.names
+  )
+}
 
-bids <- function(root) {
-  BidsData$new(root = root)
+bids_sessions <- function(bd, full.names = T) {
+  bids_subject_data(bd, "sessions", full.names = full.names)
 }
 
 # bids_table has a "file_path" column,
@@ -81,6 +116,71 @@ bids_read_tsvs <- function(bids_table, ...) {
     ) %>%
     select(-file_path) %>%
     unnest(...bids_readable)
+}
+
+
+ensure_write_access <- function(bids_dataset) {
+  if (is.null(bids_dataset$readonly) | bids_dataset$readonly != F) {
+    rlang::abort("Bids dataset argument is readonly. Refusing to write.")
+  }
+}
+
+write_tsv_at <- function(x, file, ...) {
+  if (!dir.exists(dirname(file))) {
+    dir.create(dirname(file), recursive = T)
+  }
+  write_tsv(x, file)
+}
+
+bids_write_motion_file <- function(participant_id, session_id, task_id, data, bids_dataset) {
+  # ugh: I don't like the argument order here.
+  # TODO: check if motion.json matches the file
+
+  # TODO: ensure lengths too.
+
+  ensure_write_access(bids_dataset)
+
+  # dataset/sub-<label>/ses-<label>/motion/sub-<label>_ses-<label>_task-<label>_motion.tsv
+  sub_label <- glue::glue("sub-{participant_id}")
+  ses_label <- glue::glue("ses-{session_id}")
+  destination <- glue::glue("{bd$root}/{sub_label}/{ses_label}/motion/{sub_label}_{ses_label}_task-{task_id}_motion.tsv")
+
+  write_tsv_at(data, destination)
+  "success"
+}
+
+bids_write_motion_files <- function(df, bids_dataset, .progress = T) {
+
+  # this assumes df has columns of
+  # participant_id, session_id, and data
+
+  required_names <- c("participant_id", "session_id", "task_id", "data")
+  match_test <- required_names %in% colnames(df)
+
+  if (!all(match_test)) {
+    rlang::abort(paste0("Missing column names: ", paste0(required_names[!match_test], collapse = ", ")))
+  }
+
+  if (.progress) {
+    pb <- progress::progress_bar$new(total = nrow(df))
+    pb$tick(0)
+  }
+
+  for (i in 1:nrow(df)) {
+    bids_write_motion_file(
+      df$participant_id[[i]],
+      df$session_id[[i]],
+      df$task_id[[i]],
+      df$data[[i]],
+      bids_dataset
+    )
+
+    if (.progress) {
+      pb$tick()
+    }
+  }
+
+  invisible(df)
 }
 
 
