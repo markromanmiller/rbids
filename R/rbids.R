@@ -1,6 +1,11 @@
 # Initialize
 
+#' @export
 bids <- function(root, readonly = T) {
+  # TODO: error if root is not a character or longer than one
+  if(!dir.exists(root) && readonly) {
+    rlang::abort(paste0("Root directory `", root, "` does not exist"))
+  }
   bids_dataset <- list(
     root = root,
     all_files = list.files(path = root, recursive = TRUE),
@@ -10,14 +15,15 @@ bids <- function(root, readonly = T) {
   bids_dataset
 }
 
-# Regex helpers
+# Regex helpers (all internal)
 
 subject_capture <- "sub-(?<participant_id>[[:alnum:]]+)"
 path_sep <- "[\\\\\\/]"
 subject_backref <- "sub-(?P=participant_id)"
 
 # Printing and querying data
-
+#' @method print bids_dataset
+#' @export
 print.bids_dataset <- function(bd) {
   cat("Bids data rooted at \"")
   cat(bd$root)
@@ -25,6 +31,7 @@ print.bids_dataset <- function(bd) {
   invisible(bd)
 }
 
+#' @export
 bids_subject_data_types = function(bd) {
   files_and_suffixes <- bids_match_path(
     bd,
@@ -42,6 +49,7 @@ bids_subject_data_types = function(bd) {
   sort(unique(files_and_suffixes$data_type_suffix))
 }
 
+#' @keyword Internal
 all_files <- function(bd, full.names) {
   files <- bd$all_files
   if (full.names) {
@@ -51,6 +59,7 @@ all_files <- function(bd, full.names) {
 }
 
 #--- Workhorse search functions
+#' @export
 bids_match_path <- function(bd, pattern, full.names) {
   regexpr_result <- regexpr(pattern, bd$all_files, perl = T)
 
@@ -68,28 +77,37 @@ bids_match_path <- function(bd, pattern, full.names) {
 }
 
 #--- Specific data type helpers
+#' @export
 bids_all_files <- function(bd, full.names = T) {
   data.frame(file_path = all_files(bd, full.names))
 }
 
+#' @export
+bids_motion_regex <- function() {
+  # I am unsure if this should be exported normally...
+  paste0(
+    "^",
+    subject_capture,
+    path_sep,
+    "ses-(?<session_id>[[:alnum:]]+)/",
+    "motion/",
+    subject_backref,
+    "_",
+    "ses-(?P=session_id)",
+    "_task-(?<task_label>[[:alnum:]]+)_motion.tsv$"
+  )
+}
+
+#' @export
 bids_motion <- function(bd, full.names = T) {
   bids_match_path(
     bd,
-    paste0(
-      "^",
-      subject_capture,
-      path_sep,
-      "ses-(?<session_id>[[:alnum:]]+)/",
-      "motion/",
-      subject_backref,
-      "_",
-      "ses-(?P=session_id)",
-      "_task-(?<task_label>[[:alnum:]]+)_motion.tsv$"
-    ),
+    bids_motion_regex(),
     full.names = full.names
   )
 }
 
+#' @export
 bids_subject_data <- function(bd, suffix, full.names = T) {
   bids_match_path(
     bd,
@@ -102,12 +120,14 @@ bids_subject_data <- function(bd, suffix, full.names = T) {
   )
 }
 
+#' @export
 bids_sessions <- function(bd, full.names = T) {
   bids_subject_data(bd, "sessions", full.names = full.names)
 }
 
 # bids_table has a "file_path" column,
 # ... becomes the arguments to read_tsv
+#' @export
 bids_read_tsvs <- function(bids_table, ...) {
   # select only the filenames, read all, and unnest
   bids_table %>%
@@ -118,13 +138,14 @@ bids_read_tsvs <- function(bids_table, ...) {
     unnest(...bids_readable)
 }
 
-
+#' @keyword Internal
 ensure_write_access <- function(bids_dataset) {
   if (is.null(bids_dataset$readonly) | bids_dataset$readonly != F) {
     rlang::abort("Bids dataset argument is readonly. Refusing to write.")
   }
 }
 
+#' @keyword Internal
 write_tsv_at <- function(x, file, ...) {
   if (!dir.exists(dirname(file))) {
     dir.create(dirname(file), recursive = T)
@@ -132,6 +153,7 @@ write_tsv_at <- function(x, file, ...) {
   write_tsv(x, file)
 }
 
+#' @export
 bids_write_motion_file <- function(participant_id, session_id, task_id, data, bids_dataset) {
   # ugh: I don't like the argument order here.
   # TODO: check if motion.json matches the file
@@ -149,6 +171,7 @@ bids_write_motion_file <- function(participant_id, session_id, task_id, data, bi
   "success"
 }
 
+#' @export
 bids_write_motion_files <- function(df, bids_dataset, .progress = T) {
 
   # this assumes df has columns of
