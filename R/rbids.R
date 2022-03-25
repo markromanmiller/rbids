@@ -25,7 +25,9 @@ subject_backref <- "sub-(?P=participant_id)"
 #' @method print bids_dataset
 #' @export
 print.bids_dataset <- function(bd) {
-  cat("Bids data rooted at \"")
+  cat("BIDS format data consisting of ")
+  cat(length(bd$all_files))
+  cat(" files rooted at \"")
   cat(bd$root)
   cat("\"")
   invisible(bd)
