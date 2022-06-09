@@ -78,7 +78,7 @@ bids_match_path <- function(bd, pattern, full.names) {
   df
 }
 
-#--- Specific data type helpers
+#--- Specific data helpers
 #' @export
 bids_all_files <- function(bd, full.names = T) {
   data.frame(file_path = all_files(bd, full.names))
@@ -111,6 +111,7 @@ bids_motion <- function(bd, full.names = T) {
 
 #' @export
 bids_subject_data <- function(bd, suffix, full.names = T) {
+  # bad name, perhaps subject-level data e.g.?
   bids_match_path(
     bd,
     paste0(
@@ -125,6 +126,16 @@ bids_subject_data <- function(bd, suffix, full.names = T) {
 #' @export
 bids_sessions <- function(bd, full.names = T) {
   bids_subject_data(bd, "sessions", full.names = full.names)
+}
+
+#' @export
+bids_events <- function(bd, full.names = T) {
+  # TODO: this doesn't follow the convention - I'm not sure if it should though
+  bids_match_path(
+    bd,
+    "ses-(?<session_id>[a-zA-Z0-9]+)_task-(?<task_label>[a-zA-Z0-9]+)_events.tsv",
+    full.names = full.names
+  )
 }
 
 # bids_table has a "file_path" column,
