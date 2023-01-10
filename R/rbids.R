@@ -124,6 +124,11 @@ bids_subject_data <- function(bd, suffix, full.names = T) {
 }
 
 #' @export
+bids_subjects <- function(bd, full.names = T) {
+  read_tsv(file.path(bd$root, "participants.tsv"))
+}
+
+#' @export
 bids_sessions <- function(bd, full.names = T) {
   bids_subject_data(bd, "sessions", full.names = full.names)
 }
