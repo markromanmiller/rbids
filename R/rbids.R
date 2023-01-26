@@ -51,7 +51,7 @@ bids_subject_data_types = function(bd) {
   sort(unique(files_and_suffixes$data_type_suffix))
 }
 
-#' @keyword Internal
+#' @keywords Internal
 all_files <- function(bd, full.names) {
   files <- bd$all_files
   if (full.names) {
@@ -156,23 +156,33 @@ bids_read_tsvs <- function(bids_table, ...) {
     unnest(...bids_readable)
 }
 
-#' @keyword Internal
+#' @keywords Internal
 ensure_write_access <- function(bids_dataset) {
   if (is.null(bids_dataset$readonly) | bids_dataset$readonly != F) {
     rlang::abort("Bids dataset argument is readonly. Refusing to write.")
   }
 }
 
-#' @keyword Internal
-write_tsv_at <- function(x, file, ...) {
+#' @keywords Internal
+#' @importFrom readr write_tsv read_tsv
+write_tsv_at <- function(x, file, append = F) {
   if (!dir.exists(dirname(file))) {
     dir.create(dirname(file), recursive = T)
   }
-  write_tsv(x, file)
+  if (append && file.exists(file)) {
+    ttsv <- read_tsv(file, col_names = T, n_max = 0, show_col_types = F)
+    if (!isTRUE(all.equal(colnames(ttsv), colnames(x)))) {
+      rlang::abort(paste0("Could not append to file `", file, "` because column names are not equivalent."))
+    }
+    write_tsv(x, file, append = T)
+  } else {
+    # either the file doesn't exist or we're not appending, so erase & include the header.
+    write_tsv(x, file, append = F)
+  }
 }
 
 #' @export
-bids_write_motion_file <- function(participant_id, session_id, task_id, data, bids_dataset) {
+bids_write_motion_file <- function(participant_id, session_id, task_id, data, bids_dataset, append = F) {
   # ugh: I don't like the argument order here.
   # TODO: check if motion.json matches the file
 
@@ -183,14 +193,14 @@ bids_write_motion_file <- function(participant_id, session_id, task_id, data, bi
   # dataset/sub-<label>/ses-<label>/motion/sub-<label>_ses-<label>_task-<label>_motion.tsv
   sub_label <- glue::glue("sub-{participant_id}")
   ses_label <- glue::glue("ses-{session_id}")
-  destination <- glue::glue("{bd$root}/{sub_label}/{ses_label}/motion/{sub_label}_{ses_label}_task-{task_id}_motion.tsv")
+  destination <- glue::glue("{bids_dataset$root}/{sub_label}/{ses_label}/motion/{sub_label}_{ses_label}_task-{task_id}_motion.tsv")
 
-  write_tsv_at(data, destination)
+  write_tsv_at(data, destination, append = append)
   "success"
 }
 
 #' @export
-bids_write_motion_files <- function(df, bids_dataset, .progress = T) {
+bids_write_motion_files <- function(df, bids_dataset, .progress = T, append = F) {
 
   # this assumes df has columns of
   # participant_id, session_id, and data
@@ -213,7 +223,8 @@ bids_write_motion_files <- function(df, bids_dataset, .progress = T) {
       df$session_id[[i]],
       df$task_id[[i]],
       df$data[[i]],
-      bids_dataset
+      bids_dataset,
+      append = append
     )
 
     if (.progress) {
