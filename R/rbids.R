@@ -3,9 +3,13 @@
 #' @export
 bids <- function(root, readonly = T) {
   # TODO: error if root is not a character or longer than one
+
   if(!dir.exists(root) && readonly) {
     rlang::abort(paste0("Root directory `", root, "` does not exist"))
   }
+
+  root <- tools::file_path_as_absolute(root)
+
   bids_dataset <- list(
     root = root,
     all_files = list.files(path = root, recursive = TRUE),
