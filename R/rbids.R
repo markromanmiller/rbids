@@ -12,9 +12,9 @@ bids <- function(root, readonly = T) {
 
   bids_dataset <- list(
     root = root,
-    all_files = list.files(path = root, recursive = TRUE),
     readonly = readonly
   )
+  refresh_listing(bids_dataset)
   class(bids_dataset) <- "bids_dataset"
   bids_dataset
 }
@@ -35,6 +35,11 @@ print.bids_dataset <- function(bd) {
   cat(bd$root)
   cat("\"")
   invisible(bd)
+}
+
+#' @keywords Internal
+refresh_listing <- function(bd) {
+  bd$all_files <- bd$list.files(path = bd$root, recursive = TRUE)
 }
 
 #' @export
@@ -200,6 +205,7 @@ bids_write_motion_file <- function(participant_id, session_id, task_id, data, bi
   destination <- glue::glue("{bids_dataset$root}/{sub_label}/{ses_label}/motion/{sub_label}_{ses_label}_task-{task_id}_motion.tsv")
 
   write_tsv_at(data, destination, append = append)
+  refresh_listing(bids_dataset)
   "success"
 }
 
