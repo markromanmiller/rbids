@@ -10,10 +10,9 @@ bids <- function(root, readonly = T) {
 
   root <- tools::file_path_as_absolute(root)
 
-  bids_dataset <- list(
-    root = root,
-    readonly = readonly
-  )
+  bids_dataset <- new.env()
+  bids_dataset$root <- root
+  bids_dataset$readonly <- readonly
   refresh_listing(bids_dataset)
   class(bids_dataset) <- "bids_dataset"
   bids_dataset
@@ -39,7 +38,7 @@ print.bids_dataset <- function(bd) {
 
 #' @keywords Internal
 refresh_listing <- function(bd) {
-  bd$all_files <- bd$list.files(path = bd$root, recursive = TRUE)
+  bd$all_files <- list.files(path = bd$root, recursive = TRUE)
 }
 
 #' @export
